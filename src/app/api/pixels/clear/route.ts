@@ -1,8 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { clearAllPixels } from '../route';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // Admin adreslerinin listesi (yetkili adresleri)
 const ADMIN_ADDRESSES = ['0x794dab44e2bdaa6926f2428c7191f2ca0e24c3dd'];
+
+// Global piksel verisi
+const DATA_DIR = path.join(process.cwd(), '.next');
+const PIXELS_FILE = path.join(DATA_DIR, 'pixels-data.json');
+
+// Pikselleri temizle
+const clearAllPixels = (): void => {
+  console.log(`Tüm pikseller siliniyor: ${PIXELS_FILE}`);
+  try {
+    // Klasörün var olduğundan emin ol
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    
+    // Boş piksel listesi oluştur
+    fs.writeFileSync(PIXELS_FILE, JSON.stringify([]), 'utf8');
+    console.log("Piksel dosyası başarıyla temizlendi");
+    
+    // Global değişkeni de temizle
+    if (global.pixelData) {
+      global.pixelData = [];
+    }
+  } catch (error) {
+    console.error(`Piksel temizleme hatası:`, error);
+    throw error;
+  }
+};
 
 // Tüm pikselleri temizleyen endpoint
 export async function POST(request: NextRequest) {

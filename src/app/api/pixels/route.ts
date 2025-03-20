@@ -68,7 +68,7 @@ const savePixels = (pixels: Pixel[]): void => {
 };
 
 // Piksel ekle veya güncelle
-export const addOrUpdatePixel = (newPixel: Pixel): void => {
+const addOrUpdatePixel = (newPixel: Pixel): void => {
   const pixels = loadPixels();
   const index = pixels.findIndex(p => p.x === newPixel.x && p.y === newPixel.y);
   
@@ -82,7 +82,7 @@ export const addOrUpdatePixel = (newPixel: Pixel): void => {
 };
 
 // Pikselleri temizle
-export const clearAllPixels = (): void => {
+const clearAllPixels = (): void => {
   console.log(`Tüm pikseller siliniyor: ${PIXELS_FILE}`);
   savePixels([]);
 };
