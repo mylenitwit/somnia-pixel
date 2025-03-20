@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { clearAllPixels } from '../route';
+import { clearAllPixels } from '../lib';
 
 // Admin adreslerinin listesi (yetkili adresleri)
 const ADMIN_ADDRESSES = ['0x794dab44e2bdaa6926f2428c7191f2ca0e24c3dd'];
@@ -36,6 +36,11 @@ export async function POST(request: NextRequest) {
     try {
       // Piksel verilerini temizle
       clearAllPixels();
+      
+      // Global pixelData değişkenini de temizle
+      if (typeof global !== 'undefined' && global.pixelData) {
+        global.pixelData = [];
+      }
       
       console.log("All pixels cleared successfully!");
       
