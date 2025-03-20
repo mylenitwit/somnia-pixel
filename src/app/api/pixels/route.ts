@@ -1,83 +1,90 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pixel } from '@/types/Pixel';
-import clientPromise from '@/lib/mongodb';
+import * as fs from 'fs';
+import * as path from 'path';
 
-// Piksel koleksiyonu adı
-const COLLECTION_NAME = 'pixels';
+// Global piksel verisi
+const DATA_DIR = path.join(process.cwd(), '.next');
+const PIXELS_FILE = path.join(DATA_DIR, 'pixels-data.json');
+
+// Klasörün var olduğundan emin ol
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    console.log(`Veri klasörü oluşturuldu: ${DATA_DIR}`);
+  }
+} catch (error) {
+  console.error(`Veri klasörü oluşturulamadı: ${error}`);
+}
+
+// Dosyanın en başına global değişken tanımlarını ekle
+declare global {
+  var pixelData: any[];
+  var _pixelsInitialized: boolean;
+  var _preventTestPixels: boolean;
+}
 
 // Pikselleri yükle
-const loadPixels = async (): Promise<Pixel[]> => {
+const loadPixels = (): Pixel[] => {
   try {
-    const client = await clientPromise;
-    const db = client.db();
-    const collection = db.collection(COLLECTION_NAME);
-    
-    // Tüm pikselleri al
-    const pixels = await collection.find({}).toArray();
-    console.log(`MongoDB'den ${pixels.length} piksel yüklendi`);
-    return pixels.map(p => ({
-      x: p.x,
-      y: p.y,
-      color: p.color,
-      owner: p.owner,
-      updatedAt: p.updatedAt,
-      transactionHash: p.transactionHash
-    })) as Pixel[];
+    if (fs.existsSync(PIXELS_FILE)) {
+      console.log(`Pikseller dosyadan yükleniyor: ${PIXELS_FILE}`);
+      const data = fs.readFileSync(PIXELS_FILE, 'utf8');
+      try {
+        const pixels = JSON.parse(data);
+        console.log(`${pixels.length} piksel yüklendi`);
+        return pixels;
+      } catch (parseError) {
+        console.error(`JSON parse hatası: ${parseError}`);
+        return [];
+      }
+    } else {
+      console.log(`Piksel dosyası bulunamadı, yeni dosya oluşturulacak: ${PIXELS_FILE}`);
+      fs.writeFileSync(PIXELS_FILE, JSON.stringify([]), 'utf8');
+      return [];
+    }
   } catch (error) {
-    console.error('MongoDB piksel yükleme hatası:', error);
+    console.error('Piksel yükleme hatası:', error);
     return [];
   }
 };
 
-// Pikselleri kaydet/güncelle
-const savePixel = async (newPixel: Pixel): Promise<boolean> => {
+// Pikselleri kaydet
+const savePixels = (pixels: Pixel[]): void => {
   try {
-    const client = await clientPromise;
-    const db = client.db();
-    const collection = db.collection(COLLECTION_NAME);
+    console.log(`${pixels.length} piksel şuraya kaydediliyor: ${PIXELS_FILE}`);
+    fs.writeFileSync(PIXELS_FILE, JSON.stringify(pixels, null, 2), 'utf8');
     
-    // Piksel zaten var mı kontrol et
-    const existingPixel = await collection.findOne({ 
-      x: newPixel.x, 
-      y: newPixel.y 
-    });
-    
-    if (existingPixel) {
-      // Var olan pikseli güncelle
-      await collection.updateOne(
-        { x: newPixel.x, y: newPixel.y },
-        { $set: newPixel }
-      );
-      console.log(`Piksel güncellendi: (${newPixel.x}, ${newPixel.y})`);
+    // Dosyanın başarıyla yazıldığını kontrol et
+    if (fs.existsSync(PIXELS_FILE)) {
+      const stats = fs.statSync(PIXELS_FILE);
+      console.log(`Piksel dosyası boyutu: ${stats.size} bayt - Kayıt başarılı!`);
     } else {
-      // Yeni piksel ekle
-      await collection.insertOne(newPixel);
-      console.log(`Yeni piksel eklendi: (${newPixel.x}, ${newPixel.y})`);
+      console.error(`Dosya oluşturulamadı: ${PIXELS_FILE}`);
     }
-    
-    return true;
   } catch (error) {
-    console.error('MongoDB piksel kaydetme hatası:', error);
-    return false;
+    console.error(`Piksel kaydetme hatası (${PIXELS_FILE}):`, error);
   }
 };
 
-// Pikselleri temizle
-const clearAllPixels = async (): Promise<boolean> => {
-  try {
-    console.log('Tüm pikseller temizleniyor (MongoDB)');
-    const client = await clientPromise;
-    const db = client.db();
-    const collection = db.collection(COLLECTION_NAME);
-    
-    // Tüm belgeleri sil
-    const result = await collection.deleteMany({});
-    console.log(`${result.deletedCount} piksel silindi`);
-    return true;
-  } catch (error) {
-    console.error('MongoDB piksel temizleme hatası:', error);
-    return false;
+// Piksel ekle veya güncelle
+const addOrUpdatePixel = (newPixel: Pixel): void => {
+  const pixels = loadPixels();
+  const index = pixels.findIndex(p => p.x === newPixel.x && p.y === newPixel.y);
+  
+  if (index !== -1) {
+    pixels[index] = newPixel;
+  } else {
+    pixels.push(newPixel);
   }
+  
+  savePixels(pixels);
+};
+
+// Pikselleri temizle
+const clearAllPixels = (): void => {
+  console.log(`Tüm pikseller siliniyor: ${PIXELS_FILE}`);
+  savePixels([]);
 };
 
 // API endpoint'i - GET
@@ -92,8 +99,8 @@ export async function GET(request: NextRequest) {
   const endY = Number(searchParams.get('endY') || 1024);
   
   try {
-    // MongoDB'den tüm pikselleri yükle
-    const allPixels = await loadPixels();
+    // Pikselleri yükle
+    const allPixels = loadPixels();
     
     // Koordinat aralığına göre filtrele
     const filteredPixels = allPixels.filter(
@@ -146,6 +153,17 @@ export async function POST(request: Request) {
       );
     }
     
+    // Pikseli ekle veya güncelle (mülkiyet kontrolü yapmadan)
+    // Hem global değişkende hem de dosyada saklayalım
+    if (!global.pixelData) {
+      global.pixelData = loadPixels(); // Mevcut pikselleri yükle
+    }
+    
+    // Pikseli ara, varsa güncelle
+    const existingIndex = global.pixelData.findIndex(
+      (p: any) => p.x === x && p.y === y
+    );
+    
     const timestamp = new Date().toISOString();
     const newPixel = {
       x,
@@ -156,17 +174,18 @@ export async function POST(request: Request) {
       transactionHash: transactionHash || `api-${Date.now()}`
     };
     
-    // MongoDB'ye kaydet
-    const success = await savePixel(newPixel);
-    
-    if (success) {
-      return NextResponse.json({ success: true, pixel: newPixel });
+    if (existingIndex !== -1) {
+      global.pixelData[existingIndex] = newPixel;
+      console.log(`Piksel güncellendi: (${x}, ${y})`);
     } else {
-      return NextResponse.json(
-        { error: 'Veritabanına kaydedilirken bir hata oluştu' },
-        { status: 500 }
-      );
+      global.pixelData.push(newPixel);
+      console.log(`Yeni piksel eklendi: (${x}, ${y})`);
     }
+    
+    // Dosyaya da kaydet
+    savePixels(global.pixelData);
+    
+    return NextResponse.json({ success: true, pixel: newPixel });
   } catch (error: any) {
     console.error('API Piksel ekleme/güncelleme hatası:', error);
     return NextResponse.json(
