@@ -172,25 +172,44 @@ export const colorPixel = async (x: number, y: number, color: string) => {
       }
     }
     
-    // 2. ADIM - Sunucuya güncelleme isteği gönder (paralel olarak, beklemeden)
-    // Bu işlem arka planda gerçekleşir, kullanıcı arayüzünü bloke etmez
-    fetch('/api/pixels', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(pixelEvent)
-    }).then(response => {
-      if (!response.ok) {
-        response.text().then(errorText => {
-          console.error("Sunucu yanıt hatası:", errorText);
+    // 2. ADIM - Sunucuya güncelleme isteği gönder (en az 3 kez deneme yapalım)
+    let serverUpdateSuccess = false;
+    let attempt = 0;
+    
+    while (!serverUpdateSuccess && attempt < 3) {
+      attempt++;
+      console.log(`Sunucu güncelleme denemesi ${attempt}/3...`);
+      
+      try {
+        const response = await fetch('/api/pixels', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(pixelEvent),
+          // 5 saniye timeout ekleyelim
+          signal: AbortSignal.timeout(5000)
         });
-      } else {
-        console.log("Piksel sunucuda güncellendi");
+        
+        if (response.ok) {
+          console.log("Piksel sunucuda başarıyla güncellendi");
+          serverUpdateSuccess = true;
+        } else {
+          const errorText = await response.text();
+          console.error(`Sunucu yanıt hatası (${response.status}):`, errorText);
+          // Kısa bir bekleme ekleyelim
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (serverError) {
+        console.error(`Sunucu iletişim hatası (deneme ${attempt}):`, serverError);
+        // Kısa bir bekleme ekleyelim
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-    }).catch(serverError => {
-      console.error("Sunucu iletişim hatası:", serverError);
-    });
+    }
+    
+    if (!serverUpdateSuccess) {
+      console.warn("Sunucu güncellenemedi, sadece blockchain işlemine devam ediliyor");
+    }
     
     // 3. ADIM - Blockchain işlemi (paralel başlat, ama hash için bekle)
     const provider = await getProvider();

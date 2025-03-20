@@ -245,122 +245,6 @@ const Canvas: React.FC<CanvasProps> = ({ account, selectedColor }) => {
     });
   }, [redrawCanvas]);
   
-  // Admin kontrolü
-  useEffect(() => {
-    const checkAdminStatus = async () => {
-      if (account) {
-        const adminStatus = await isAdmin(account);
-        setIsUserAdmin(adminStatus);
-      } else {
-        setIsUserAdmin(false);
-      }
-    };
-    
-    checkAdminStatus();
-  }, [account]);
-  
-  // Eksik olan handlePixelClick fonksiyonunu ekleyelim
-  const handlePixelClick = useCallback(async (x: number, y: number) => {
-    if (!account) {
-      setNotification("Lütfen önce cüzdanınızı bağlayın");
-      setTimeout(() => setNotification(null), 3000);
-      return;
-    }
-    
-    try {
-      setLoading(true);
-      
-      // Seçilen rengi al (hex formatında # ile)
-      const color = selectedColor;
-      
-      console.log(`Piksel renklendiriliyor: (${x}, ${y}) - Renk: ${color}`);
-      
-      // Önce UI'ı güncelle (blockchain onayından önce)
-      const newPixel: Pixel = {
-        x,
-        y,
-        color: parseInt(color.replace('#', ''), 16),
-        owner: account,
-        transactionHash: "pending-" + new Date().getTime()
-      };
-      
-      // UI'da hemen göster
-      drawPixel(newPixel);
-      
-      // Şimdi doğrudan blockchain işlemini başlatalım
-      const txHash = await colorPixel(x, y, color);
-      
-      // İşlem başarılı olduğunda bildirim göster
-      setNotification(`Piksel başarıyla renklendi! (${x}, ${y})`);
-      setLastTxHash(txHash);
-      
-      // Bildirim zamanlayıcısını ayarla
-      setTimeout(() => setNotification(null), 5000);
-    } catch (error: any) {
-      console.error("Piksel renklendirme hatası:", error);
-      
-      // Kullanıcıya daha anlaşılır hata mesajları göster
-      let errorMessage = error.message || 'Bilinmeyen hata';
-      
-      // Yaygın hata durumlarını kontrol et
-      if (errorMessage.includes('insufficient funds')) {
-        errorMessage = 'Yetersiz bakiye. Piksel boyamak için 0.01 STT gerekiyor.';
-      } else if (errorMessage.includes('user rejected')) {
-        errorMessage = 'İşlem kullanıcı tarafından reddedildi.';
-      } else if (errorMessage.includes('JSON')) {
-        errorMessage = 'Sunucu iletişim hatası. Lütfen sayfayı yenileyip tekrar deneyin.';
-      }
-      
-      setNotification(`Hata: ${errorMessage}`);
-      setTimeout(() => setNotification(null), 5000);
-    } finally {
-      setLoading(false);
-    }
-  }, [account, selectedColor, drawPixel]);
-  
-  // Piksel olaylarını dinle
-  useEffect(() => {
-    let cleanup: (() => void) | null = null;
-    
-    const setupEventListener = async () => {
-      try {
-        console.log("Piksel event listener'ları kuruluyor...");
-        
-        // Global event listener'ı başlat
-        await startListeningToPixelEvents();
-        
-        // Piksel güncellemelerini dinle
-        cleanup = await listenToPixelEvents((event: Pixel) => {
-          console.log("Piksel güncelleme olayı alındı:", event);
-          
-          // Yeni/değişen pikseli hemen UI'da göster
-          drawPixel(event);
-          
-          // Bildirimi göster (sadece kendi piksellerimiz değilse)
-          if (account && event.owner.toLowerCase() !== account.toLowerCase()) {
-            setNotification(`Piksel güncellendi: (${event.x}, ${event.y})`);
-            setTimeout(() => setNotification(null), 3000);
-          }
-        });
-        
-        console.log("Piksel event listener'ları kuruldu");
-      } catch (error) {
-        console.error("Event dinleme hatası:", error);
-      }
-    };
-    
-    // Sayfa yüklendiğinde ve hesap değiştiğinde event listener'ları ayarla
-    setupEventListener();
-    
-    // Component unmount olduğunda cleanup
-    return () => {
-      console.log("Event listener'lar temizleniyor...");
-      if (cleanup) {
-        cleanup();
-      }
-    };
-  }, [account, drawPixel]);
-  
   // Piksel verilerini localStorage'dan yükle
   const loadPixelsFromLocalStorage = (): Pixel[] => {
     try {
@@ -589,6 +473,94 @@ const Canvas: React.FC<CanvasProps> = ({ account, selectedColor }) => {
     onOpen();
   }, [isUserAdmin, onOpen, showNotification]);
 
+  // Piksel tıklama işleyicisi
+  const handlePixelClick = useCallback(async (x: number, y: number) => {
+    if (!account) {
+      showNotification("Lütfen önce cüzdanınızı bağlayın");
+      return;
+    }
+    
+    if (!selectedColor) {
+      showNotification("Lütfen önce bir renk seçin");
+      return;
+    }
+    
+    // Mevcut işlem devam ediyorsa engelleyelim
+    if (loading) {
+      console.log("İşlem zaten devam ediyor, lütfen bekleyin...");
+      return;
+    }
+    
+    // İşlemi başlatıyoruz
+    setLoading(true);
+    setNotification(null);
+    
+    try {
+      console.log(`Piksel renklendiriliyor: (${x}, ${y}) - Renk: ${selectedColor}`);
+      
+      // Önce local storage'da piksel durumunu işaretle - bu doğrulamada yardımcı olacak
+      try {
+        localStorage.setItem('last_pixel_update', JSON.stringify({
+          x, y, color: selectedColor, timestamp: Date.now(), status: 'pending'
+        }));
+      } catch (storageError) {
+        console.error("localStorage hatası:", storageError);
+      }
+      
+      // Blockchain işlemi
+      const txHash = await colorPixel(x, y, selectedColor);
+      console.log("Transaction hash:", txHash);
+      
+      // İşlem hash'ini sakla
+      setLastTxHash(txHash);
+      
+      // Local storage'da işlem durumunu güncelle
+      try {
+        localStorage.setItem('last_pixel_update', JSON.stringify({
+          x, y, color: selectedColor, timestamp: Date.now(), status: 'completed', txHash
+        }));
+      } catch (storageError) {
+        console.error("localStorage güncelleme hatası:", storageError);
+      }
+      
+      // Bildirim göster
+      showNotification(`Piksel renklendirme işlemi başarılı: (${x}, ${y})`);
+    } catch (error: any) {
+      console.error("Piksel renklendirme hatası:", error);
+      
+      // Hata mesajını analiz et
+      let errorMessage = "Piksel renklendirme işlemi başarısız oldu.";
+      
+      if (error.message && typeof error.message === 'string') {
+        if (error.message.includes("insufficient funds")) {
+          errorMessage = "Yetersiz bakiye. İşlem için yeterli STT yok.";
+        } else if (error.message.includes("user rejected")) {
+          errorMessage = "İşlem kullanıcı tarafından reddedildi.";
+        } else if (error.message.includes("network") || error.message.includes("timeout")) {
+          errorMessage = "Ağ hatası. Lütfen bağlantınızı kontrol edin ve tekrar deneyin.";
+        }
+      }
+      
+      // Hata bildirimini göster
+      showNotification(`Error: ${errorMessage}`);
+      
+      // Local storage'da işlem durumunu güncelle
+      try {
+        localStorage.setItem('last_pixel_update', JSON.stringify({
+          x, y, color: selectedColor, timestamp: Date.now(), status: 'failed', error: errorMessage
+        }));
+      } catch (storageError) {
+        console.error("localStorage güncelleme hatası:", storageError);
+      }
+    } finally {
+      // İşlem tamamlandı, yükleme durumunu kapat
+      setLoading(false);
+      
+      // Canvas'ı yenile - son durumu almak için
+      loadPixels();
+    }
+  }, [account, selectedColor, loading, showNotification, loadPixels]);
+  
   // Canvas tıklama işleyicisi
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -629,6 +601,63 @@ const Canvas: React.FC<CanvasProps> = ({ account, selectedColor }) => {
     // Piksel rengini değiştirme işlemini başlat - herkes boyama yapabilsin
     handlePixelClick(pixelX, pixelY);
   }, [pixels, CANVAS_SIZE, GRID_CELL_SIZE, handlePixelClick]);
+  
+  // Admin kontrolü
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (account) {
+        const adminStatus = await isAdmin(account);
+        setIsUserAdmin(adminStatus);
+      } else {
+        setIsUserAdmin(false);
+      }
+    };
+    
+    checkAdminStatus();
+  }, [account]);
+  
+  // Piksel olaylarını dinle
+  useEffect(() => {
+    let cleanup: (() => void) | null = null;
+    
+    const setupEventListener = async () => {
+      try {
+        console.log("Piksel event listener'ları kuruluyor...");
+        
+        // Global event listener'ı başlat
+        await startListeningToPixelEvents();
+        
+        // Piksel güncellemelerini dinle
+        cleanup = await listenToPixelEvents((event: Pixel) => {
+          console.log("Piksel güncelleme olayı alındı:", event);
+          
+          // Yeni/değişen pikseli hemen UI'da göster
+          drawPixel(event);
+          
+          // Bildirimi göster (sadece kendi piksellerimiz değilse)
+          if (account && event.owner.toLowerCase() !== account.toLowerCase()) {
+            setNotification(`Piksel güncellendi: (${event.x}, ${event.y})`);
+            setTimeout(() => setNotification(null), 3000);
+          }
+        });
+        
+        console.log("Piksel event listener'ları kuruldu");
+      } catch (error) {
+        console.error("Event dinleme hatası:", error);
+      }
+    };
+    
+    // Sayfa yüklendiğinde ve hesap değiştiğinde event listener'ları ayarla
+    setupEventListener();
+    
+    // Component unmount olduğunda cleanup
+    return () => {
+      console.log("Event listener'lar temizleniyor...");
+      if (cleanup) {
+        cleanup();
+      }
+    };
+  }, [account, drawPixel]);
   
   return (
     <div className="w-full h-full max-h-[calc(100vh-80px)] relative bg-white rounded-lg shadow-lg border border-gray-400 flex items-center justify-center overflow-hidden" ref={containerRef}>
