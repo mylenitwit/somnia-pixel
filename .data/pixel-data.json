@@ -1,0 +1,62 @@
+[
+  {
+    "x": 112,
+    "y": 134,
+    "color": "#000000",
+    "owner": "0x794dab44e2bdaa6926f2428c7191f2ca0e24c3dd"
+  },
+  {
+    "x": 148,
+    "y": 110,
+    "color": "#000000",
+    "owner": "0x794dab44e2bdaa6926f2428c7191f2ca0e24c3dd"
+  },
+  {
+    "x": 17,
+    "y": 209,
+    "color": "#000000",
+    "owner": "0x794dab44e2bdaa6926f2428c7191f2ca0e24c3dd"
+  },
+  {
+    "x": 74,
+    "y": 138,
+    "color": "#000000",
+    "owner": "0x794dab44e2bdaa6926f2428c7191f2ca0e24c3dd",
+    "updatedAt": "2025-03-19T20:43:14.921Z"
+  },
+  {
+    "x": 37,
+    "y": 186,
+    "color": "#000000",
+    "owner": "0x794dab44e2bdaa6926f2428c7191f2ca0e24c3dd",
+    "updatedAt": "2025-03-19T20:43:22.476Z"
+  },
+  {
+    "x": 349,
+    "y": 172,
+    "color": "#000000",
+    "owner": "0x794dab44e2bdaa6926f2428c7191f2ca0e24c3dd",
+    "updatedAt": "2025-03-19T20:43:31.931Z"
+  },
+  {
+    "x": 70,
+    "y": 102,
+    "color": "#000000",
+    "owner": "0x794dab44e2bdaa6926f2428c7191f2ca0e24c3dd",
+    "updatedAt": "2025-03-19T20:45:48.380Z"
+  },
+  {
+    "x": 113,
+    "y": 180,
+    "color": "#000000",
+    "owner": "0x794dab44e2bdaa6926f2428c7191f2ca0e24c3dd",
+    "updatedAt": "2025-03-19T20:45:56.111Z"
+  },
+  {
+    "x": 123,
+    "y": 118,
+    "color": "#000000",
+    "owner": "0x794dab44e2bdaa6926f2428c7191f2ca0e24c3dd",
+    "updatedAt": "2025-03-19T20:48:06.183Z"
+  }
+]
