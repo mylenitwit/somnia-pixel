@@ -172,82 +172,25 @@ export const colorPixel = async (x: number, y: number, color: string) => {
       }
     }
     
-    // 2. ADIM - Sunucuya güncelleme isteği gönder (en az 5 kez deneme yapalım ve daha uzun timeout)
-    let serverUpdateSuccess = false;
-    let attempt = 0;
-    const maxAttempts = 5;
-    
-    while (!serverUpdateSuccess && attempt < maxAttempts) {
-      attempt++;
-      console.log(`Sunucu güncelleme denemesi ${attempt}/${maxAttempts}...`);
-      
-      try {
-        const response = await fetch('/api/pixels', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          },
-          body: JSON.stringify({
-            ...pixelEvent,
-            // Deneme numarasını ve zaman damgasını ekle - her denemeyi benzersiz yap
-            _attempt: attempt,
-            _timestamp: Date.now()
-          }),
-          // 10 saniye timeout ekleyelim
-          signal: AbortSignal.timeout(10000)
+    // 2. ADIM - Sunucuya güncelleme isteği gönder (paralel olarak, beklemeden)
+    // Bu işlem arka planda gerçekleşir, kullanıcı arayüzünü bloke etmez
+    fetch('/api/pixels', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(pixelEvent)
+    }).then(response => {
+      if (!response.ok) {
+        response.text().then(errorText => {
+          console.error("Sunucu yanıt hatası:", errorText);
         });
-        
-        if (response.ok) {
-          const result = await response.json();
-          console.log("Piksel sunucuda başarıyla güncellendi:", result);
-          serverUpdateSuccess = true;
-          
-          // Lokal Storage'a başarılı sunucu güncellemesini kaydedelim
-          try {
-            localStorage.setItem('last_server_update', JSON.stringify({
-              ...pixelEvent,
-              serverSuccess: true,
-              timestamp: Date.now()
-            }));
-          } catch (storageError) {
-            console.error("localStorage hatası:", storageError);
-          }
-        } else {
-          let errorData;
-          try {
-            errorData = await response.json();
-          } catch (e) {
-            errorData = await response.text();
-          }
-          
-          console.error(`Sunucu yanıt hatası (${response.status}):`, errorData);
-          // Kısa bir bekleme ekleyelim, her denemede biraz daha artan süre
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-        }
-      } catch (serverError) {
-        console.error(`Sunucu iletişim hatası (deneme ${attempt}):`, serverError);
-        // Kısa bir bekleme ekleyelim, her denemede biraz daha artan süre
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      } else {
+        console.log("Piksel sunucuda güncellendi");
       }
-    }
-    
-    if (!serverUpdateSuccess) {
-      console.warn("Sunucu güncellenemedi, sadece blockchain işlemine devam ediliyor");
-      
-      // Başarısız sunucu güncellemesini loglayalım
-      try {
-        localStorage.setItem('failed_server_update', JSON.stringify({
-          ...pixelEvent,
-          serverSuccess: false,
-          attempts: attempt,
-          timestamp: Date.now()
-        }));
-      } catch (storageError) {
-        console.error("localStorage hatası:", storageError);
-      }
-    }
+    }).catch(serverError => {
+      console.error("Sunucu iletişim hatası:", serverError);
+    });
     
     // 3. ADIM - Blockchain işlemi (paralel başlat, ama hash için bekle)
     const provider = await getProvider();
@@ -266,58 +209,12 @@ export const colorPixel = async (x: number, y: number, color: string) => {
     const tx = await contractInstance.colorPixel(x, y, colorInt, { value });
     console.log("Transaction gönderildi:", tx.hash);
     
-    // Transaction'ın tamamlanmasını beklemeden önce, tekrar sunucuya bildiri
-    if (!serverUpdateSuccess) {
-      console.log("İşlem başarılı, tekrar sunucuyu güncellemeyi deniyorum...");
-      
-      try {
-        const finalResponse = await fetch('/api/pixels', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache'
-          },
-          body: JSON.stringify({
-            ...pixelEvent,
-            transactionHash: tx.hash,
-            _finalAttempt: true,
-            _timestamp: Date.now()
-          }),
-          signal: AbortSignal.timeout(10000)
-        });
-        
-        if (finalResponse.ok) {
-          console.log("İşlem sonrası sunucu güncellemesi başarılı");
-        }
-      } catch (finalError) {
-        console.error("İşlem sonrası sunucu güncellemesi başarısız:", finalError);
-      }
-    }
+    // Transaction'ın tamamlanmasını bekleme - sadece hash'i dön
+    // Transaction'ın tamamlanması event listener'lar tarafından takip edilecek
     
     // Arka planda blockchain işleminin tamamlanmasını bekleyen bir promise başlat
     tx.wait()
-      .then(() => {
-        console.log("Transaction tamamlandı:", tx.hash);
-        
-        // İşlem tamamlanınca tekrar sunucuyu güncelleme dene
-        return fetch('/api/pixels', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache'
-          },
-          body: JSON.stringify({
-            ...pixelEvent,
-            transactionHash: tx.hash,
-            _confirmed: true,
-            _timestamp: Date.now()
-          })
-        }).then(finalResponse => {
-          if (finalResponse.ok) {
-            console.log("Transaction tamamlandı ve sunucu güncellemesi başarılı");
-          }
-        });
-      })
+      .then(() => console.log("Transaction tamamlandı:", tx.hash))
       .catch((err: any) => console.error("Transaction başarısız oldu:", err));
     
     // Kullanıcıya hemen hash dön

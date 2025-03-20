@@ -1,13 +1,91 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pixel } from '@/types/Pixel';
-import { loadPixels, savePixels, addOrUpdatePixel, clearAllPixels } from './lib';
+import * as fs from 'fs';
+import * as path from 'path';
 
-// Global değişken tanımı
+// Global piksel verisi
+const DATA_DIR = path.join(process.cwd(), '.next');
+const PIXELS_FILE = path.join(DATA_DIR, 'pixels-data.json');
+
+// Klasörün var olduğundan emin ol
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    console.log(`Veri klasörü oluşturuldu: ${DATA_DIR}`);
+  }
+} catch (error) {
+  console.error(`Veri klasörü oluşturulamadı: ${error}`);
+}
+
+// Dosyanın en başına global değişken tanımlarını ekle
 declare global {
   var pixelData: any[];
   var _pixelsInitialized: boolean;
   var _preventTestPixels: boolean;
 }
+
+// Pikselleri yükle
+const loadPixels = (): Pixel[] => {
+  try {
+    if (fs.existsSync(PIXELS_FILE)) {
+      console.log(`Pikseller dosyadan yükleniyor: ${PIXELS_FILE}`);
+      const data = fs.readFileSync(PIXELS_FILE, 'utf8');
+      try {
+        const pixels = JSON.parse(data);
+        console.log(`${pixels.length} piksel yüklendi`);
+        return pixels;
+      } catch (parseError) {
+        console.error(`JSON parse hatası: ${parseError}`);
+        return [];
+      }
+    } else {
+      console.log(`Piksel dosyası bulunamadı, yeni dosya oluşturulacak: ${PIXELS_FILE}`);
+      fs.writeFileSync(PIXELS_FILE, JSON.stringify([]), 'utf8');
+      return [];
+    }
+  } catch (error) {
+    console.error('Piksel yükleme hatası:', error);
+    return [];
+  }
+};
+
+// Pikselleri kaydet
+const savePixels = (pixels: Pixel[]): void => {
+  try {
+    console.log(`${pixels.length} piksel şuraya kaydediliyor: ${PIXELS_FILE}`);
+    fs.writeFileSync(PIXELS_FILE, JSON.stringify(pixels, null, 2), 'utf8');
+    
+    // Dosyanın başarıyla yazıldığını kontrol et
+    if (fs.existsSync(PIXELS_FILE)) {
+      const stats = fs.statSync(PIXELS_FILE);
+      console.log(`Piksel dosyası boyutu: ${stats.size} bayt - Kayıt başarılı!`);
+    } else {
+      console.error(`Dosya oluşturulamadı: ${PIXELS_FILE}`);
+    }
+  } catch (error) {
+    console.error(`Piksel kaydetme hatası (${PIXELS_FILE}):`, error);
+  }
+};
+
+// Piksel ekle veya güncelle
+export const addOrUpdatePixel = (newPixel: Pixel): void => {
+  const pixels = loadPixels();
+  const index = pixels.findIndex(p => p.x === newPixel.x && p.y === newPixel.y);
+  
+  if (index !== -1) {
+    pixels[index] = newPixel;
+  } else {
+    pixels.push(newPixel);
+  }
+  
+  savePixels(pixels);
+};
+
+// Pikselleri temizle
+export const clearAllPixels = (): void => {
+  console.log(`Tüm pikseller siliniyor: ${PIXELS_FILE}`);
+  savePixels([]);
+};
 
 // API endpoint'i - GET
 export async function GET(request: NextRequest) {
@@ -30,43 +108,11 @@ export async function GET(request: NextRequest) {
     );
     
     console.log(`${filteredPixels.length} piksel query için döndürülüyor`);
-    
-    // CORS header'ları ekleyelim
-    return new NextResponse(JSON.stringify(filteredPixels), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Cache-Control': 'no-store, max-age=0'
-      },
-    });
+    return NextResponse.json(filteredPixels);
   } catch (error) {
     console.error("Piksel yükleme hatası:", error);
-    return NextResponse.json([], { 
-      status: 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Cache-Control': 'no-store, max-age=0'
-      },
-    });
+    return NextResponse.json([], { status: 500 });
   }
-}
-
-// OPTIONS metodu için handler ekleyelim (CORS preflight için)
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Max-Age': '86400'
-    }
-  });
 }
 
 // POST handler: Yeni piksel ekle/güncelle
@@ -78,7 +124,7 @@ export async function POST(request: Request) {
     
     try {
       rawData = await request.text(); // Önce raw text olarak alalım
-      console.log('Alınan raw veri (ilk 100 karakter):', rawData.substring(0, 100));
+      console.log('Alınan raw veri:', rawData);
       
       // Boş veya geçersiz veri kontrolü
       if (!rawData || rawData.trim() === '') {
@@ -88,48 +134,22 @@ export async function POST(request: Request) {
       // Veriyi JSON'a çevirelim
       data = JSON.parse(rawData);
     } catch (parseError: any) {
-      console.error('JSON parse hatası:', parseError, 'Raw data ilk 100 karakter:', rawData.substring(0, 100));
-      return new NextResponse(
-        JSON.stringify({ error: 'Geçersiz JSON formatı', details: parseError.message }),
-        { 
-          status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-            'Pragma': 'no-cache'
-          }
-        }
+      console.error('JSON parse hatası:', parseError, 'Raw data:', rawData);
+      return NextResponse.json(
+        { error: 'Geçersiz JSON formatı', details: parseError.message },
+        { status: 400 }
       );
     }
     
     const { x, y, color, owner, transactionHash } = data;
     
-    console.log('API: Piksel güncelleme isteği alındı:', { 
-      x, y, color, owner, 
-      transactionHash: transactionHash?.substring(0, 10) + '...',
-      metadata: {
-        timestamp: data._timestamp,
-        attempt: data._attempt,
-        confirmed: data._confirmed,
-        finalAttempt: data._finalAttempt
-      }
-    });
+    console.log('API: Piksel güncelleme isteği alındı:', { x, y, color, owner, transactionHash });
     
     // Tüm gerekli alanların gönderildiğinden emin ol
     if (x === undefined || y === undefined || color === undefined || !owner) {
-      console.error('Eksik veya geçersiz veri:', { x, y, color, owner });
-      return new NextResponse(
-        JSON.stringify({ error: 'Geçersiz veri: x, y, color ve owner alanları gereklidir' }),
-        { 
-          status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-            'Pragma': 'no-cache'
-          }
-        }
+      return NextResponse.json(
+        { error: 'Geçersiz veri: x, y, color ve owner alanları gereklidir' },
+        { status: 400 }
       );
     }
     
@@ -137,7 +157,6 @@ export async function POST(request: Request) {
     // Hem global değişkende hem de dosyada saklayalım
     if (!global.pixelData) {
       global.pixelData = loadPixels(); // Mevcut pikselleri yükle
-      console.log(`Global piksel veri yüklendi, ${global.pixelData.length} piksel`);
     }
     
     // Pikseli ara, varsa güncelle
@@ -156,128 +175,22 @@ export async function POST(request: Request) {
     };
     
     if (existingIndex !== -1) {
-      const oldPixel = global.pixelData[existingIndex];
-      console.log(`Piksel güncelleniyor: (${x}, ${y}), eski renk: ${oldPixel.color}, yeni renk: ${color}`);
       global.pixelData[existingIndex] = newPixel;
+      console.log(`Piksel güncellendi: (${x}, ${y})`);
     } else {
       global.pixelData.push(newPixel);
-      console.log(`Yeni piksel eklendi: (${x}, ${y}), renk: ${color}`);
+      console.log(`Yeni piksel eklendi: (${x}, ${y})`);
     }
     
     // Dosyaya da kaydet
-    try {
-      savePixels(global.pixelData);
-      console.log(`Piksel verileri kaydedildi, toplam ${global.pixelData.length} piksel`);
-    } catch (saveError) {
-      console.error("Piksel kaydetme hatası:", saveError);
-      // Kaydetme hatası olsa bile işlemi devam ettirelim
-    }
+    savePixels(global.pixelData);
     
-    return new NextResponse(
-      JSON.stringify({ 
-        success: true, 
-        pixel: newPixel,
-        totalPixels: global.pixelData.length,
-        timestamp: new Date().toISOString()
-      }),
-      { 
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-          'Pragma': 'no-cache'
-        }
-      }
-    );
+    return NextResponse.json({ success: true, pixel: newPixel });
   } catch (error: any) {
     console.error('API Piksel ekleme/güncelleme hatası:', error);
-    return new NextResponse(
-      JSON.stringify({ 
-        error: 'Piksel eklenirken bir hata oluştu', 
-        details: error.message,
-        timestamp: new Date().toISOString()
-      }),
-      { 
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-          'Pragma': 'no-cache'
-        }
-      }
-    );
-  }
-}
-
-// Canvas'ı temizleme API'si
-export async function DELETE(request: Request) {
-  try {
-    // Request body'i parse et
-    let bodyText;
-    try {
-      bodyText = await request.text();
-      const body = JSON.parse(bodyText);
-      const { adminAddress } = body;
-      
-      // Admin kontrolü - basit kontrol
-      if (!adminAddress || !adminAddress.startsWith('0x')) {
-        return new NextResponse(
-          JSON.stringify({ error: 'Unauthorized' }),
-          { 
-            status: 403,
-            headers: {
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
-            }
-          }
-        );
-      }
-      
-      // Pikselleri temizle
-      clearAllPixels();
-      
-      // Global değişkeni de temizle
-      if (global.pixelData) {
-        global.pixelData = [];
-      }
-      
-      return new NextResponse(
-        JSON.stringify({ success: true, message: 'All pixels cleared' }),
-        { 
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Cache-Control': 'no-store, max-age=0'
-          }
-        }
-      );
-    } catch (parseError) {
-      console.error("JSON parse hatası (DELETE):", parseError, "Raw body:", bodyText);
-      return new NextResponse(
-        JSON.stringify({ error: 'Geçersiz JSON formatı' }),
-        { 
-          status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
-          }
-        }
-      );
-    }
-  } catch (error) {
-    console.error("Error clearing pixels:", error);
-    return new NextResponse(
-      JSON.stringify({ error: 'Failed to clear pixels' }),
-      { 
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
-      }
+    return NextResponse.json(
+      { error: 'Piksel eklenirken bir hata oluştu', details: error.message },
+      { status: 500 }
     );
   }
 } 

@@ -1,102 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { clearAllPixels } from '../lib';
-
-// Global variables
-declare global {
-  var pixelData: any[];
-  var _pixelsInitialized: boolean;
-  var _preventTestPixels: boolean;
-}
+import { clearAllPixels } from '../route';
 
 // Admin adreslerinin listesi (yetkili adresleri)
 const ADMIN_ADDRESSES = ['0x794dab44e2bdaa6926f2428c7191f2ca0e24c3dd'];
 
-// OPTIONS request handler for CORS preflight
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Max-Age': '86400'
-    }
-  });
-}
-
-// POST request handler to clear all pixels
-export async function POST(request: Request) {
-  console.log("POST /api/pixels/clear called");
+// Tüm pikselleri temizleyen endpoint
+export async function POST(request: NextRequest) {
+  console.log("Canvas clearing API called");
   
   try {
-    // Daha güvenli bir şekilde JSON parse et
-    let bodyText;
+    // Request body'den admin adresini al
+    const requestData = await request.json();
+    const adminAddress = requestData.adminAddress?.toLowerCase() || '';
+    
+    console.log("Received clear request from address:", adminAddress);
+    console.log("Admin whitelist (lowercase):", ADMIN_ADDRESSES.map(addr => addr.toLowerCase()));
+    console.log("Original request address:", requestData.adminAddress);
+    
+    // Adresi kontrol et (case-insensitive olarak)
+    const isAdmin = ADMIN_ADDRESSES.some(
+      addr => addr.toLowerCase() === adminAddress
+    );
+    
+    if (!isAdmin) {
+      console.log("Unauthorized clear attempt by:", adminAddress);
+      return NextResponse.json(
+        { error: 'Unauthorized. Admin access required.' },
+        { status: 403 }
+      );
+    }
+    
+    // Veritabanını temizle
+    console.log("ADMIN ACCESS GRANTED - CLEARING ALL PIXELS");
+    
     try {
-      bodyText = await request.text();
-      const body = JSON.parse(bodyText);
-      const { adminAddress } = body;
-      
-      console.log("Clear request from:", adminAddress);
-      
-      // Basic admin check
-      if (!adminAddress || !adminAddress.startsWith('0x')) {
-        return new NextResponse(
-          JSON.stringify({ error: 'Unauthorized', details: 'Admin address required' }),
-          { 
-            status: 403,
-            headers: {
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
-            }
-          }
-        );
-      }
-      
-      // Clear all pixels
-      console.log("Clearing all pixels...");
+      // Piksel verilerini temizle
       clearAllPixels();
       
-      // Also clear global variable
-      if (global.pixelData) {
-        global.pixelData = [];
-      }
+      console.log("All pixels cleared successfully!");
       
-      console.log("All pixels cleared successfully");
-      return new NextResponse(
-        JSON.stringify({ success: true, message: 'All pixels cleared' }),
-        { 
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Cache-Control': 'no-store, max-age=0'
-          }
-        }
-      );
-    } catch (parseError) {
-      console.error("JSON parse error:", parseError, "Raw body:", bodyText);
-      return new NextResponse(
-        JSON.stringify({ error: 'Invalid JSON format', details: String(parseError) }),
-        { 
-          status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
-          }
-        }
+      return NextResponse.json({ 
+        success: true, 
+        message: 'Canvas cleared successfully',
+        pixelsRemaining: 0
+      });
+    } catch (clearError) {
+      console.error("Error during pixel clearing:", clearError);
+      return NextResponse.json(
+        { error: 'Server error while clearing canvas', details: String(clearError) },
+        { status: 500 }
       );
     }
   } catch (error) {
-    console.error("Error clearing pixels:", error);
-    return new NextResponse(
-      JSON.stringify({ error: 'Failed to clear pixels', details: String(error) }),
-      { 
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
-      }
+    console.error("Canvas clear API error:", error);
+    return NextResponse.json(
+      { error: 'Invalid request or server error' },
+      { status: 400 }
     );
   }
 } 

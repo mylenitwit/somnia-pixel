@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Canvas from './components/Canvas';
-import WalletConnect from './components/WalletConnect';
-import ColorPicker from './components/ColorPicker';
-import { connectWallet, switchToSomnia } from './utils/blockchain';
+import Canvas from '../components/Canvas';
+import WalletConnect from '../components/WalletConnect';
+import ColorPicker from '../components/ColorPicker';
+import { connectWallet, switchToSomnia } from '../utils/blockchain';
 
 export default function Home() {
   const [account, setAccount] = useState<string | null>(null);

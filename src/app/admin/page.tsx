@@ -5,9 +5,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ethers } from 'ethers';
 import { 
-  // connectWallet, - yorum satırı haline getiriyorum çünkü kullanılmıyor
+  connectWallet, 
   switchToSomnia, 
-  // disconnectWallet, - yorum satırı haline getiriyorum çünkü kullanılmıyor
+  disconnectWallet, 
   isAdmin, 
   createContractInstance, 
   CONTRACT_ADDRESS 
@@ -20,9 +20,8 @@ export default function AdminPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [contractBalance, setContractBalance] = useState<string>('0');
-  // Kullanılmayan state'leri kaldırıyorum
-  // const [withdrawAmount, setWithdrawAmount] = useState<string>('');
-  // const [withdrawAddress, setWithdrawAddress] = useState<string>('');
+  const [withdrawAmount, setWithdrawAmount] = useState<string>('');
+  const [withdrawAddress, setWithdrawAddress] = useState<string>('');
   const [showClearConfirm, setShowClearConfirm] = useState<boolean>(false);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
   const [actionMessage, setActionMessage] = useState<string>('');
@@ -52,9 +51,9 @@ export default function AdminPage() {
         
         setIsAdminUser(true);
         await fetchContractBalance();
-      } catch (err) {
+      } catch (err: any) {
         console.error("Admin kontrol hatası:", err);
-        setError(err instanceof Error ? err.message : "Bilinmeyen bir hata oluştu");
+        setError(err.message || "Bilinmeyen bir hata oluştu");
       } finally {
         setLoading(false);
       }
@@ -70,9 +69,9 @@ export default function AdminPage() {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const balance = await provider.getBalance(CONTRACT_ADDRESS);
       setContractBalance(ethers.formatEther(balance));
-    } catch (err) {
+    } catch (err: any) {
       console.error("Bakiye sorgulama hatası:", err);
-      setError("Kontrat bakiyesi alınamadı: " + (err instanceof Error ? err.message : String(err)));
+      setError("Kontrat bakiyesi alınamadı: " + err.message);
     }
   };
   
@@ -101,9 +100,9 @@ export default function AdminPage() {
       await fetchContractBalance();
       
       setActionMessage(`Tüm bakiye (${ethers.formatEther(balance)} ETH) başarıyla çekildi.`);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Para çekme hatası:", err);
-      setError("Para çekme işlemi başarısız: " + (err instanceof Error ? err.message : String(err)));
+      setError("Para çekme işlemi başarısız: " + err.message);
     } finally {
       setActionLoading(false);
     }
@@ -134,9 +133,9 @@ export default function AdminPage() {
       
       setActionMessage(`Canvas başarıyla temizlendi. Not: Bu işlem sadece sunucudaki verileri temizledi.`);
       
-    } catch (err) {
+    } catch (err: any) {
       console.error("Canvas temizleme hatası:", err);
-      setError("Canvas temizleme işlemi başarısız: " + (err instanceof Error ? err.message : String(err)));
+      setError("Canvas temizleme işlemi başarısız: " + err.message);
     } finally {
       setActionLoading(false);
     }
@@ -229,7 +228,7 @@ export default function AdminPage() {
             <h2 className="text-xl font-semibold mb-4">Para Çekme</h2>
             <div className="space-y-4">
               <p className="text-gray-700">
-                Bu işlem, kontrat bakiyesindeki tüm ETH&apos;yi kontrat sahibine aktaracaktır.
+                Bu işlem, kontrat bakiyesindeki tüm ETH'yi kontrat sahibine aktaracaktır.
               </p>
               
               <button
@@ -251,7 +250,7 @@ export default function AdminPage() {
                 disabled={actionLoading}
                 className="w-full py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-red-400"
               >
-                Canvas&apos;ı Temizle
+                Canvas'ı Temizle
               </button>
             </div>
           </div>
@@ -262,9 +261,9 @@ export default function AdminPage() {
       {showClearConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md mx-auto">
-            <h3 className="text-xl font-semibold mb-4 text-gray-800">Canvas&apos;ı Temizle</h3>
+            <h3 className="text-xl font-semibold mb-4 text-gray-800">Canvas'ı Temizle</h3>
             <p className="mb-6 text-gray-600">
-              Tüm canvas&apos;ı temizlemek istediğinizden emin misiniz? Bu işlem geri alınamaz ve tüm pikseller silinecektir.
+              Tüm canvas'ı temizlemek istediğinizden emin misiniz? Bu işlem geri alınamaz ve tüm pikseller silinecektir.
             </p>
             <div className="flex justify-end space-x-3">
               <button
