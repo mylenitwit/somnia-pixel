@@ -391,93 +391,32 @@ const Canvas: React.FC<CanvasProps> = ({ account, selectedColor }) => {
   };
 
   // Pikselleri yükle
-  const loadPixels = useCallback(async () => {
+  const loadPixels = async () => {
+    setLoading(true);
+    
     try {
-      setIsLoading(true);
-      setLoadingProgress(0);
+      console.log("Pikseller getiriliyor...");
+      const response = await fetch(`/api/pixels`);
       
-      // Canvas temizlendi mi kontrol et
-      const isCanvasCleared = localStorage.getItem('canvas_cleared') === 'true';
-      if (isCanvasCleared) {
-        console.log('Canvas temizlenmiş durumda, sadece sunucudan veri alınacak');
-        setPixels([]);
-        setLoadingProgress(50);
-      } else {
-        // Önce localStorage'dan yüklemeyi dene
-        const localPixels = loadPixelsFromLocalStorage();
-        if (localPixels.length > 0) {
-          console.log(`${localPixels.length} piksel localStorage'dan yüklendi`);
-          setPixels(localPixels);
-          setLoadingProgress(50);
-        }
+      if (!response.ok) {
+        throw new Error(`Piksel veri alımı başarısız: ${response.status}`);
       }
       
-      // Tüm pikselleri yükle
-      const loadAllPixels = async () => {
-        try {
-          console.log("Tüm pikseller yükleniyor...");
-          const allPixels = await getAllPixels();
-          console.log(`${allPixels.length} piksel sunucudan yüklendi`);
-          
-          // Eğer sunucudan gelen veri boşsa ve canvas temizlenmişse durumu koru
-          if (allPixels.length === 0 && isCanvasCleared) {
-            console.log('Sunucudan veri gelmedi, canvas temizlenme durumu korunuyor');
-          } 
-          // Sunucudan veri geldiyse temizlenme durumunu kaldır
-          else if (allPixels.length > 0 && isCanvasCleared) {
-            localStorage.removeItem('canvas_cleared');
-            console.log('Sunucudan veri geldi, canvas temizlenme durumu kaldırıldı');
-          }
-          
-          setPixels(allPixels);
-          // Sadece canvas temizlenmediyse localStorage'a kaydet
-          if (!isCanvasCleared) {
-            savePixelsToLocalStorage(allPixels);
-          }
-          setLoadingProgress(100);
-          setIsLoading(false);
-        } catch (error) {
-          console.error("Piksel yükleme hatası:", error);
-          setIsLoading(false);
-        }
-      };
+      const data = await response.json();
+      console.log(`${data.length} piksel alındı`);
       
-      // İlk yükleme
-      await loadAllPixels();
-      
-      // Daha sık aralıklarla otomatik yenileme (10 saniyede bir)
-      const intervalId = setInterval(async () => {
-        console.log("Otomatik piksel yenileme...");
-        try {
-          const updatedPixels = await getAllPixels();
-          console.log(`${updatedPixels.length} piksel yenilendi`);
-          
-          // Canvas temizlendi mi kontrol et
-          const isStillCleared = localStorage.getItem('canvas_cleared') === 'true';
-          
-          // Pikselleri güncelle
-          setPixels(updatedPixels);
-          
-          // Sadece canvas temizlenmediyse localStorage'a kaydet
-          if (!isStillCleared) {
-            savePixelsToLocalStorage(updatedPixels);
-          }
-        } catch (refreshError) {
-          console.error("Piksel yenileme hatası:", refreshError);
-        }
-      }, 10000); // 10 saniyede bir
-      
-      // Component unmount olduğunda interval'i temizle
-      return () => {
-        console.log("Piksel yenileme interval'ı temizleniyor");
-        clearInterval(intervalId);
-      };
-      
+      // MongoDB'den gelen pikselleri doğrudan diziye çevir
+      const pixelArray: Pixel[] = data;
+      setPixels(pixelArray);
+      redrawCanvas();
+      setLoading(false);
     } catch (error) {
-      console.error("Error loading pixel data:", error);
-      setIsLoading(false);
+      console.error('Piksel yükleme hatası:', error);
+      setNotification(`Pikseller yüklenirken bir hata oluştu. Lütfen sayfayı yenileyin.`);
+      setTimeout(() => setNotification(null), 5000);
+      setLoading(false);
     }
-  }, []);
+  };
   
   // LocalStorage'a daha az sıklıkta kaydet (performans için)
   useEffect(() => {

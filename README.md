@@ -34,3 +34,19 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## MongoDB Entegrasyonu
+
+Bu projede piksel verileri MongoDB'de saklanmaktadır. Projenin çalışması için aşağıdaki adımları takip edin:
+
+1. [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) hesabı oluşturun (ücretsiz plan yeterlidir)
+2. Yeni bir cluster oluşturun ve bağlantı bilgilerini alın
+3. `.env.local` dosyasını project kök dizininde oluşturun ve şu bilgileri ekleyin:
+
+```env
+MONGODB_URI=mongodb+srv://username:password@cluster0.mongodb.net/somniaPixel?retryWrites=true&w=majority
+```
+
+4. Vercel'e deploy ederken aynı ortam değişkenini Vercel ayarlarından da eklemeyi unutmayın.
+
+MongoDB bağlantı URI'sini kendi cluster bilgilerinizle değiştirmeyi unutmayın.

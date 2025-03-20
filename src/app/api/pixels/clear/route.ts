@@ -1,34 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as fs from 'fs';
 import * as path from 'path';
+import clientPromise from '@/lib/mongodb';
 
 // Admin adreslerinin listesi (yetkili adresleri)
 const ADMIN_ADDRESSES = ['0x794dab44e2bdaa6926f2428c7191f2ca0e24c3dd'];
 
-// Global piksel verisi
-const DATA_DIR = path.join(process.cwd(), '.next');
-const PIXELS_FILE = path.join(DATA_DIR, 'pixels-data.json');
+// Piksel koleksiyonu adı
+const COLLECTION_NAME = 'pixels';
 
 // Pikselleri temizle
-const clearAllPixels = (): void => {
-  console.log(`Tüm pikseller siliniyor: ${PIXELS_FILE}`);
+const clearAllPixels = async (): Promise<boolean> => {
   try {
-    // Klasörün var olduğundan emin ol
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
+    console.log('Tüm pikseller temizleniyor (MongoDB)');
+    const client = await clientPromise;
+    const db = client.db();
+    const collection = db.collection(COLLECTION_NAME);
     
-    // Boş piksel listesi oluştur
-    fs.writeFileSync(PIXELS_FILE, JSON.stringify([]), 'utf8');
-    console.log("Piksel dosyası başarıyla temizlendi");
-    
-    // Global değişkeni de temizle
-    if (global.pixelData) {
-      global.pixelData = [];
-    }
+    // Tüm belgeleri sil
+    const result = await collection.deleteMany({});
+    console.log(`${result.deletedCount} piksel silindi`);
+    return true;
   } catch (error) {
-    console.error(`Piksel temizleme hatası:`, error);
-    throw error;
+    console.error('MongoDB piksel temizleme hatası:', error);
+    return false;
   }
 };
 
@@ -63,15 +58,22 @@ export async function POST(request: NextRequest) {
     
     try {
       // Piksel verilerini temizle
-      clearAllPixels();
+      const success = await clearAllPixels();
       
-      console.log("All pixels cleared successfully!");
-      
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Canvas cleared successfully',
-        pixelsRemaining: 0
-      });
+      if (success) {
+        console.log("All pixels cleared successfully!");
+        
+        return NextResponse.json({ 
+          success: true, 
+          message: 'Canvas cleared successfully',
+          pixelsRemaining: 0
+        });
+      } else {
+        return NextResponse.json(
+          { error: 'Database clearing operation failed' },
+          { status: 500 }
+        );
+      }
     } catch (clearError) {
       console.error("Error during pixel clearing:", clearError);
       return NextResponse.json(
